@@ -1,8 +1,8 @@
-# cs262-chat
+# cs262-chat-rpc
 
-CS262 Design Exercise 1: Chat Server
+CS262 Design Exercise 2: Chat Server (RPC Version)
 
-This project should provide a fully functional chat system built over raw sockets.
+This project should provide a fully functional chat system built with RPC instead of raw sockets.
 
 ## Setup
 
