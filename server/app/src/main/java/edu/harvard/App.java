@@ -7,6 +7,8 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.Properties;
 
+import io.grpc.Grpc;
+import io.grpc.InsecureServerCredentials;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import io.grpc.Status;
@@ -48,7 +50,8 @@ public class App {
 
 	static void startServer(int port) throws IOException {
 		Database db = new Database();
-		Server server = ServerBuilder.forPort(port)
+		// Server server = ServerBuilder.forPort(port)
+		Server server = Grpc.newServerBuilderForPort(port, InsecureServerCredentials.create())
 				.addService(new ChatService(db)).build();
 		server.start();
 		try {
