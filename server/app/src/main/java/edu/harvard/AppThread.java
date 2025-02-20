@@ -8,7 +8,6 @@ import edu.harvard.Data.JSONProtocol;
 import edu.harvard.Data.Protocol;
 import edu.harvard.Data.WireProtocol;
 import edu.harvard.Data.Data.Account;
-import edu.harvard.Data.Data.AccountLookupResponse;
 import edu.harvard.Data.Data.ListAccountsRequest;
 import edu.harvard.Data.Data.LoginCreateRequest;
 import edu.harvard.Data.Data.MessageResponse;
@@ -75,8 +74,6 @@ public class AppThread extends Thread {
             OperationHandler handler = new OperationHandler(db);
             switch (request.operation) {
               case LOOKUP_USER:
-                AccountLookupResponse lookupResponse = handler.lookupAccount((String) request.payload);
-                socket.getOutputStream().write(protocol.generateLookupUserResponse(lookupResponse));
                 continue;
               case LOGIN:
                 LoginResponse loginResponse = handler.login((LoginCreateRequest) request.payload);

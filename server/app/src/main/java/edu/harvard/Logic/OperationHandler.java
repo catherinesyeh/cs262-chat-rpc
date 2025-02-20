@@ -8,10 +8,10 @@ import java.util.List;
 
 import at.favre.lib.crypto.bcrypt.BCrypt;
 import edu.harvard.Data.Data.Account;
-import edu.harvard.Data.Data.AccountLookupResponse;
+import edu.harvard.Data.Data.Message;
+import edu.harvard.Chat.AccountLookupResponse;
 import edu.harvard.Data.Data.ListAccountsRequest;
 import edu.harvard.Data.Data.LoginCreateRequest;
-import edu.harvard.Data.Data.Message;
 import edu.harvard.Data.Data.MessageResponse;
 import edu.harvard.Data.Data.SendMessageRequest;
 import edu.harvard.Data.Protocol.HandleException;
@@ -33,16 +33,16 @@ public class OperationHandler {
     public int unread_messages;
   }
 
-  public AccountLookupResponse lookupAccount(String username) throws HandleException {
-    AccountLookupResponse response = new AccountLookupResponse();
+  public AccountLookupResponse lookupAccount(String username) {
+    AccountLookupResponse.Builder response = AccountLookupResponse.newBuilder();
     Account account = db.lookupAccountByUsername(username);
     if (account == null) {
-      response.exists = false;
-      return response;
+      response.setExists(false);
+      return response.build();
     }
-    response.exists = true;
-    response.bcrypt_prefix = account.client_bcrypt_prefix;
-    return response;
+    response.setExists(true);
+    response.setBcryptPrefix(account.client_bcrypt_prefix);
+    return response.build();
   }
 
   /*
@@ -60,7 +60,7 @@ public class OperationHandler {
     return db.createAccount(account);
   }
 
-  public LoginResponse login(LoginCreateRequest request) throws HandleException {
+  public LoginResponse login(LoginCreateRequest request) {
     LoginResponse response = new LoginResponse();
     // Get account
     Account account = db.lookupAccountByUsername(request.username);
@@ -80,7 +80,7 @@ public class OperationHandler {
     return response;
   }
 
-  public List<Account> listAccounts(ListAccountsRequest request) throws HandleException {
+  public List<Account> listAccounts(ListAccountsRequest request) {
     ArrayList<Account> list = new ArrayList<>(request.maximum_number);
     Collection<Account> allAccounts = db.getAllAccounts();
     for (Account account : allAccounts) {
@@ -148,7 +148,7 @@ public class OperationHandler {
     return id;
   }
 
-  public List<MessageResponse> requestMessages(int user_id, int maximum_number) throws HandleException {
+  public List<MessageResponse> requestMessages(int user_id, int maximum_number) {
     List<Message> unreadMessages = db.getUnreadMessages(user_id, maximum_number);
     ArrayList<MessageResponse> responseMessages = new ArrayList<>(unreadMessages.size());
     for (Message message : unreadMessages) {

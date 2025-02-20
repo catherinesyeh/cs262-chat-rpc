@@ -2,8 +2,8 @@ package edu.harvard.Logic;
 
 import org.junit.jupiter.api.Test;
 
+import edu.harvard.Chat.AccountLookupResponse;
 import edu.harvard.Data.Data.Account;
-import edu.harvard.Data.Data.AccountLookupResponse;
 import edu.harvard.Data.Data.ListAccountsRequest;
 import edu.harvard.Data.Data.LoginCreateRequest;
 import edu.harvard.Data.Data.MessageResponse;
@@ -33,8 +33,8 @@ public class OperationHandlerTest {
       assertEquals(2, handler.createAccount(u2));
       // Log into one
       AccountLookupResponse lookup = handler.lookupAccount("june");
-      assertEquals(true, lookup.exists);
-      assertEquals(29, lookup.bcrypt_prefix.length());
+      assertEquals(true, lookup.getExists());
+      assertEquals(29, lookup.getBcryptPrefix().length());
       LoginResponse login = handler.login(u1);
       assertEquals(true, login.success);
       assertEquals(1, login.account_id);

@@ -2,7 +2,7 @@
 
 CS262 Design Exercise 2: Chat Server (RPC Version)
 
-This project should provide a fully functional chat system built with RPC instead of raw sockets.
+This project should provide a fully functional chat system built with gRPC instead of raw sockets.
 
 ## Setup
 
@@ -15,6 +15,10 @@ This project should provide a fully functional chat system built with RPC instea
 ```
 poetry install
 ```
+
+## Proto Files
+
+The proto file is in the `proto/` directory. It is symlinked into the expected subdirectory in the server directory.
 
 ## Server
 
@@ -54,13 +58,8 @@ cd tests
 poetry run pytest
 ```
 
-- Client JSON protocol tests: [tests/test_client_wire.py](tests/test_client_wire.py)
-  - Note: server does not need to be running.
-- Client JSON protocol tests: [tests/test_client_json.py](tests/test_client_json.py)
-  - Note: server does not need to be running.
 - Integration tests: [tests/test_integration.py](tests/test_integration.py)
   - Note: These tests do require the server and expect a clean database, so we suggest restarting the server before running them.
-  - To test with each protocol, change the `USE_JSON_PROTOCOL` flag in your `config.json` file.
   - The integration tests will also log metrics to the [tests/logs/](tests/logs/) directory.
 
 ## Documentation

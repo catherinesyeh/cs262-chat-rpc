@@ -5,25 +5,33 @@ package edu.harvard;
 
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.net.ServerSocket;
 import java.util.Properties;
 
+import io.grpc.Server;
+import io.grpc.ServerBuilder;
+import io.grpc.stub.StreamObserver;
+
 import edu.harvard.Logic.Database;
+import edu.harvard.Logic.OperationHandler;
+
+import edu.harvard.Chat.AccountLookupRequest;
+import edu.harvard.Chat.AccountLookupResponse;
 
 public class App {
 	public static void main(String[] args) {
 		Properties prop = new Properties();
-		ServerSocket serverSocket = null;
 		try (FileInputStream input = new FileInputStream("../config.properties")) {
 			prop.load(input);
-
 			String port = prop.getProperty("port");
-
-			serverSocket = new ServerSocket(Integer.parseInt(port));
 			Database db = new Database();
-
-			while (true) {
-				new AppThread(serverSocket.accept(), db).start();
+			Server server = ServerBuilder.forPort(Integer.parseInt(port))
+					.addService(new ChatService(db)).build();
+			server.start();
+			try {
+				System.out.println("Running!");
+				server.awaitTermination();
+			} catch (InterruptedException ex) {
+				System.exit(0);
 			}
 		} catch (IOException ex) {
 			System.err.println("Unhandled I/O failure!");
@@ -31,6 +39,21 @@ public class App {
 			for (StackTraceElement ste : ex.getStackTrace()) {
 				System.err.println(ste + "\n");
 			}
+		}
+	}
+
+	private static class ChatService extends ChatServiceGrpc.ChatServiceImplBase {
+		private final OperationHandler handler;
+
+		ChatService(Database db) {
+			this.handler = new OperationHandler(db);
+		}
+
+		@Override
+		public void accountLookup(AccountLookupRequest request, StreamObserver<AccountLookupResponse> response) {
+			AccountLookupResponse lookupResponse = handler.lookupAccount(request.getUsername());
+			response.onNext(lookupResponse);
+			response.onCompleted();
 		}
 	}
 }

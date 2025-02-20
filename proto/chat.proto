@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package edu.harvard;
+
+option java_package = "edu.harvard";
+
+message Account {
+  int32 id = 1;
+  string username = 2;
+}
+
+message ChatMessage {
+  int32 id = 1;
+  string sender = 2;
+  string message = 3;
+}
+
+message AccountLookupRequest {
+  string username = 1;
+}
+
+message AccountLookupResponse {
+  bool exists = 1;
+  string bcrypt_prefix = 2;
+}
+
+message LoginCreateRequest {
+  string username = 1;
+  string password_hash = 2;
+}
+
+message LoginCreateResponse {
+  bool success = 1;
+  string session_key = 2;
+}
+
+message ListAccountsRequest {
+  string session_key = 1;
+  uint32 maximum_number = 2;
+  uint32 offset_account_id = 3;
+  string filter_text = 4;
+}
+
+message ListAccountsResponse {
+  repeated Account accounts = 1;
+}
+
+message SendMessageRequest {
+  string session_key = 1;
+  string recipient = 2;
+  string message = 3;
+}
+
+message SendMessageResponse {
+  int32 id = 1;
+}
+
+message RequestMessagesRequest {
+  string session_key = 1;
+  uint32 maximum_number = 2;
+}
+
+message RequestMessagesResponse {
+  repeated ChatMessage messages = 1;
+}
+
+message DeleteMessagesRequest {
+  string session_key = 1;
+  repeated int32 id = 2;
+}
+
+message DeleteAccountRequest {
+  string session_key = 1;
+}
+
+message Empty {}
+
+service ChatService {
+  rpc AccountLookup(AccountLookupRequest) returns (AccountLookupResponse);
+  rpc Login(LoginCreateRequest) returns (LoginCreateResponse);
+  rpc CreateAccount(LoginCreateRequest) returns (LoginCreateResponse);
+  rpc ListAccounts(ListAccountsRequest) returns (ListAccountsResponse);
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
+  rpc RequestMessages(RequestMessagesRequest) returns (RequestMessagesResponse);
+  rpc DeleteMessages(DeleteMessagesRequest) returns (Empty);
+  rpc DeleteAccount(DeleteAccountRequest) returns (Empty);
+}

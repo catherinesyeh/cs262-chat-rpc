@@ -5,9 +5,13 @@
  * For more details on building Java & JVM projects, please refer to https://docs.gradle.org/8.12/userguide/building_java_projects.html in the Gradle documentation.
  */
 
+import com.google.protobuf.gradle.*
+
 plugins {
     // Apply the application plugin to add support for building a CLI application in Java.
     application
+
+    id("com.google.protobuf") version "0.9.4"
 }
 
 repositories {
@@ -20,11 +24,17 @@ dependencies {
     testImplementation(libs.junit.jupiter)
 
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    
+    runtimeOnly("io.grpc:grpc-netty-shaded:1.70.0")
 
     // This dependency is used by the application.
     implementation(libs.guava)
     implementation("org.json:json:20250107")
     implementation("at.favre.lib:bcrypt:0.10.2")
+    implementation("io.grpc:grpc-protobuf:1.70.0")
+    implementation("io.grpc:grpc-stub:1.70.0")
+
+    compileOnly("org.apache.tomcat:annotations-api:6.0.53")
 }
 
 // Apply a specific Java toolchain to ease working on different environments.
@@ -42,4 +52,31 @@ application {
 tasks.named<Test>("test") {
     // Use JUnit Platform for unit tests.
     useJUnitPlatform()
+}
+
+// from https://github.com/google/protobuf-gradle-plugin/blob/master/examples/exampleKotlinDslProject/build.gradle.kts
+protobuf {
+  protoc {
+    // The artifact spec for the Protobuf Compiler
+    artifact = "com.google.protobuf:protoc:3.25.6"
+  }
+  plugins {
+    // Optional: an artifact spec for a protoc plugin, with "grpc" as
+    // the identifier, which can be referred to in the "plugins"
+    // container of the "generateProtoTasks" closure.
+    id("grpc") {
+      artifact = "io.grpc:protoc-gen-grpc-java:1.15.1"
+    }
+  }
+  generateProtoTasks {
+    ofSourceSet("main").forEach {
+      it.plugins {
+        // Apply the "grpc" plugin whose spec is defined above, without
+        // options. Note the braces cannot be omitted, otherwise the
+        // plugin will not be added. This is because of the implicit way
+        // NamedDomainObjectContainer binds the methods.
+        id("grpc") { }
+      }
+    }
+  }
 }
