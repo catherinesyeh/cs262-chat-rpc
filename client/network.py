@@ -218,7 +218,7 @@ class ChatClient():
             return self.log_error("No session key available")
 
         request = chat_pb2.DeleteMessagesRequest(
-            session_key=self.session_key, message_ids=message_ids)
+            session_key=self.session_key, id=message_ids)
         self.stub.DeleteMessages(request)
         print(f"[DELETED MESSAGES] IDs: {message_ids}")
         return True

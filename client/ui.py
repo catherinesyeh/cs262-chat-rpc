@@ -679,7 +679,7 @@ class ChatUI:
 
         :param selected_msg_ids: The list of message IDs to delete
         """
-        success = self.client.send_delete_message(selected_msg_ids)
+        success = self.client.delete_message(selected_msg_ids)
         self.root.after(0, lambda: self.handle_delete_messages_result(success))
 
     def handle_delete_messages_result(self, success):
@@ -726,7 +726,7 @@ class ChatUI:
         Delete the account in a background thread.
         """
         print("[DEBUG] Deleting account")
-        success = self.client.send_delete_account()
+        success = self.client.delete_account()
         self.root.after(0, self.handle_delete_account_result(success))
 
     def handle_delete_account_result(self, success):
@@ -739,7 +739,6 @@ class ChatUI:
             messagebox.showinfo("Account Deleted",
                                 "Account deleted successfully")
             self.root.after(0, self.disconnect)
-            self.client.close()
         else:
             messagebox.showerror("Error", "Failed to delete account")
 
