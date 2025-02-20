@@ -6,11 +6,13 @@ Passwords are double-hashed using bcrypt. Double-hashing means that the password
 
 The client can obtain the bcrypt settings needed for login by making an account lookup request; this request will return the password salt and number of bcrypt rounds to use. All password hashes will be transmitted in the standard bcrypt string format, which includes the number of rounds, salt, and hash.
 
+## Session keys
+
+Logging in or creating an account returns a string session key. This must be sent in all future requests to identify a user's session.
+
 ## Request/Response System
 
-Most messages from the server will be sent only as a response to a request, with one exception: a read messages response will be sent to a client when a message is sent to that client's logged in user and their connection is active.
-
-Requests can be sent in either JSON format or the custom wire protocol. Any request sent with an opening curly bracket `{` as the first byte (`0x7b`/`123`) will be interpreted as a JSON message. (Thus `123` can never be used as an operation ID.) For spontaneous/unrequested message responses, as described above, the format used by the first request message sent over the connection by the client will be used.
+No streaming responses exist. The recipient should receive exactly one response per gRPC call.
 
 ## Pagination
 
@@ -44,8 +46,6 @@ There is currently no persistence support. A server crash will lose all accounts
 
 The server code is in the `server/app/src` directory. `main` contains all the functional classes, while `test` contains unit tests.
 
-The `Data` package primarily handles data flowing over the network (including implementations for both protocols), and also includes the definitions for the classes stored in the database.
+The `Logic` package contains the actual database and operation logic. These classes only handle internal data classes, and do not interact with the data sent over the network directly, though the `OperationHandler` does reuse some Protobuf generated classes. The database is an in-memory datastore, with no persistence, and is created in `App`. All methods are `synchronized` to allow for cross thread use.
 
-The `Logic` package contains the actual database and operation logic. These classes only handle internal data classes, and do not interact with the (JSON/wire protocol) data sent over the network - they are exactly the same no matter which protocol is used. The database is an in-memory datastore, with no persistence, and is created in `App` and shared between the threads. All methods are `synchronized` to allow for cross thread use.
-
-The `App` class does very little, beyond setting up a socket server. Most of the work is done in `AppThread`, which repeatedly pulls a request from the socket, parses it (using one of the two protocol classes), handles the request (by handing off the data to an OperationHandler), and then generates a response using the same protocol class as was used to parse the request, sending it back out over the socket.
+The `App` class sets up the gRPC server and handles incoming RPC requests.
