@@ -2,7 +2,6 @@ import math
 import tkinter as tk
 from tkinter import messagebox
 import threading
-import json
 
 
 class ChatUI:
@@ -30,9 +29,6 @@ class ChatUI:
         self.unread_count = 0
 
         self.prev_search = ""  # Store previous search text for user list
-
-        # Start listening for messages
-        self.client.start_listener(self.display_message)
 
         # Start on the login screen
         self.root.title("Login")
@@ -84,7 +80,8 @@ class ChatUI:
 
         :param username: The username to look up
         """
-        self.client.send_lookup_account(username)
+        exists = self.client.account_lookup(username)
+        self.root.after(0, lambda: self.handle_lookup_result(exists))
 
     def handle_lookup_result(self, lookup_result):
         """
@@ -93,12 +90,7 @@ class ChatUI:
         :param lookup_result: Whether the username exists
         """
         username = self.username_entry.get().strip()
-        if lookup_result:
-            # Username exists, prompt for password to log in
-            self.prompt_password(username, login=True)
-        else:
-            # Username does not exist, prompt for password to create an account
-            self.prompt_password(username, login=False)
+        self.prompt_password(username, login=lookup_result)
 
     def prompt_password(self, username, login=True):
         """
@@ -160,11 +152,18 @@ class ChatUI:
         if login:
             # Log in to the existing account
             print("[DEBUG] Logging in")
-            self.client.send_login(username, password)
+            response = self.client.login(username, password)
+            success = response.success
+            unread_count = response.unread_count
+            self.root.after(0, lambda: self.handle_login_result(
+                success, unread_count))
         else:
             # Create a new account
             print("[DEBUG] Creating account")
-            self.client.send_create_account(username, password)
+            response = self.client.create_account(username, password)
+            success = response.success
+            self.root.after(
+                0, lambda: self.handle_account_creation_result(success))
 
     def handle_login_result(self, success, unread_count):
         """
@@ -364,7 +363,8 @@ class ChatUI:
             self.client.last_offset_account_id = self.all_users[-1][0] if self.all_users else 0
 
         print(f"[DEBUG] Fetching users with search text: {search_text}")
-        self.client.send_list_accounts(search_text)
+        users = self.client.list_accounts(search_text)
+        self.root.after(0, lambda: self.handle_user_results(users))
 
     def handle_user_results(self, users):
         """
@@ -455,7 +455,8 @@ class ChatUI:
         Fetch messages.
         """
         print("[DEBUG] Fetching messages")
-        self.client.send_request_messages()
+        messages = self.client.send_request_messages()
+        self.root.after(0, lambda: self.update_messages(messages))
 
     def update_messages(self, messages):
         """
@@ -640,7 +641,8 @@ class ChatUI:
         :param recipient: The recipient of the message
         :param message: The message to send
         """
-        self.client.send_message(recipient, message)
+        success = self.client.send_message(recipient, message)
+        self.root.after(0, lambda: self.handle_send_message_result(success))
 
     def handle_send_message_result(self, success):
         """
@@ -677,7 +679,8 @@ class ChatUI:
 
         :param selected_msg_ids: The list of message IDs to delete
         """
-        self.client.send_delete_message(selected_msg_ids)
+        success = self.client.send_delete_message(selected_msg_ids)
+        self.root.after(0, lambda: self.handle_delete_messages_result(success))
 
     def handle_delete_messages_result(self, success):
         """
@@ -723,8 +726,8 @@ class ChatUI:
         Delete the account in a background thread.
         """
         print("[DEBUG] Deleting account")
-        self.client.send_delete_account()
-        self.root.after(0, self.handle_delete_account_result(True))
+        success = self.client.send_delete_account()
+        self.root.after(0, self.handle_delete_account_result(success))
 
     def handle_delete_account_result(self, success):
         """
@@ -741,52 +744,11 @@ class ChatUI:
             messagebox.showerror("Error", "Failed to delete account")
 
     ### HELPER METHODS ###
-    def display_message(self, message):
-        """
-        Handles messages received from the server.
-
-        :param message: The message to display
-        """
-        print(f"[DEBUG] Received message: {message}")
-        if message.startswith("LOOKUP_USER"):  # OP 1
-            exists = int(message.split(":")[1])
-            self.root.after(0, lambda: self.handle_lookup_result(exists))
-        elif message.startswith("LOGIN"):  # OP 2
-            success, unread_count = message.split(":")[1:]
-            success = int(success)
-            unread_count = int(unread_count)
-            self.root.after(0, lambda: self.handle_login_result(
-                success, unread_count))
-        elif message.startswith("CREATE_ACCOUNT"):  # OP 3
-            success = int(message.split(":")[1])
-            self.root.after(
-                0, lambda: self.handle_account_creation_result(success))
-        elif message.startswith("LIST_ACCOUNTS"):  # OP 4
-            users = json.loads(message.split(":", 1)[1])
-            self.root.after(0, lambda: self.handle_user_results(users))
-        elif message.startswith("REQUEST_MESSAGES"):  # OP 5
-            messages = json.loads(message.split(":", 1)[1])
-            self.root.after(0, lambda: self.update_messages(messages))
-        elif message.startswith("SEND_MESSAGE"):  # OP 6
-            success = int(message.split(":")[1])
-            self.root.after(
-                0, lambda: self.handle_send_message_result(success))
-        elif message.startswith("DELETE_MESSAGES"):  # OP 7
-            success = int(message.split(":")[1])
-            self.root.after(
-                0, lambda: self.handle_delete_messages_result(success))
-        elif message.startswith("DELETE_ACCOUNT"):  # OP 8
-            success = int(message.split(":")[1])
-            self.root.after(
-                0, lambda: self.handle_delete_account_result(success))
-        else:
-            print(f"[DEBUG] Unknown message: {message}")
-
     def disconnect(self):
         """
         Disconnect from the server.
         """
-        self.client.close()
+        self.client.stop_polling_messages()
         self.root.destroy()
 
     def clear_window(self):

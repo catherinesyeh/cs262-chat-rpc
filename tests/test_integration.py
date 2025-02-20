@@ -155,7 +155,7 @@ def test_list_accounts(test_context):
     start_time = time.time()
     with client_connection() as sender:
         # Attach the callback to capture received messages
-        sender.start_listener(test_context.message_callback)
+        sender.start_polling_messages(test_context.message_callback)
 
         sender.max_users = 2
 
@@ -221,8 +221,8 @@ def test_send_receive_message(test_context):
     start_time = time.time()
     with client_connection() as sender, client_connection() as receiver:
         # Set up the receiver
-        receiver.start_listener(test_context.message_callback)
-        sender.start_listener(test_context.message_callback)
+        receiver.start_polling_messages(test_context.message_callback)
+        sender.start_polling_messages(test_context.message_callback)
 
         # Create sender account
         sender.send_create_account("test_sender", "test_password")
@@ -273,7 +273,7 @@ def test_send_receive_message(test_context):
         # Restart the receiver
         receiver.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         receiver.connect()
-        receiver.start_listener(test_context.message_callback)
+        receiver.start_polling_messages(test_context.message_callback)
 
         # Log in receiver
         receiver.send_login("test_receiver", "test_password")
@@ -316,7 +316,7 @@ def test_delete_message(test_context):
     start_time = time.time()
     with client_connection() as sender, client_connection() as receiver:
         # Set up the receiver
-        receiver.start_listener(test_context.message_callback)
+        receiver.start_polling_messages(test_context.message_callback)
 
         # Create sender account
         sender.send_create_account("test_sender1", "test_password")
