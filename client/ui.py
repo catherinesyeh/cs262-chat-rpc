@@ -152,16 +152,19 @@ class ChatUI:
         if login:
             # Log in to the existing account
             print("[DEBUG] Logging in")
+            # see if response is tuple
             response = self.client.login(username, password)
-            success = response.success
-            unread_count = response.unread_count
+            if isinstance(response, tuple):
+                success, unread_count = response
+            else:
+                success = response
+                unread_count = 0
             self.root.after(0, lambda: self.handle_login_result(
                 success, unread_count))
         else:
             # Create a new account
             print("[DEBUG] Creating account")
-            response = self.client.create_account(username, password)
-            success = response.success
+            success = self.client.create_account(username, password)
             self.root.after(
                 0, lambda: self.handle_account_creation_result(success))
 
@@ -455,7 +458,7 @@ class ChatUI:
         Fetch messages.
         """
         print("[DEBUG] Fetching messages")
-        messages = self.client.send_request_messages()
+        messages = self.client.request_messages()
         self.root.after(0, lambda: self.update_messages(messages))
 
     def update_messages(self, messages):

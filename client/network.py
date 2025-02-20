@@ -100,7 +100,7 @@ class ChatClient():
         :param password: Password
         :return: True + number of unread messages if login is successful, False otherwise
         """
-        hashed_password = self.hash_password(password)
+        hashed_password = self.get_hashed_password_for_login(password)
         request = chat_pb2.LoginCreateRequest(
             username=username, password_hash=hashed_password)
         response = self.stub.Login(request)
@@ -124,7 +124,7 @@ class ChatClient():
         :param password: Password
         :return: True if account creation is successful, False otherwise
         """
-        hashed_password = self.hash_password(password)
+        hashed_password = self.generate_hashed_password_for_create(password)
         request = chat_pb2.LoginCreateRequest(
             username=username, password_hash=hashed_password)
         response = self.stub.CreateAccount(request)
@@ -132,6 +132,8 @@ class ChatClient():
             print(
                 f"[CREATE ACCOUNT] Success: {response.success}, Session key: {response.session_key}")
             self.session_key = response.session_key
+            self.username = username
+            self.start_polling_messages()
         else:
             self.log_error("Account creation failed")
         return response.success
@@ -150,7 +152,8 @@ class ChatClient():
         request = chat_pb2.ListAccountsRequest(
             session_key=self.session_key, maximum_number=self.max_users, offset_account_id=self.last_offset_account_id, filter_text=filter_text)
         response = self.stub.ListAccounts(request)
-        accounts = [(account["id"], account["username"])
+        print(f"ACCOUNTS: {response.accounts}")
+        accounts = [(account.id, account.username)
                     for account in response.accounts]
         print(f"[LIST ACCOUNTS] Accounts: {accounts}")
         return accounts
@@ -186,9 +189,9 @@ class ChatClient():
         request = chat_pb2.RequestMessagesRequest(
             session_key=self.session_key, maximum_number=self.max_msg)
         response = self.stub.RequestMessages(request)
-        messages = [(message["id"], message["sender"],
-                     message["message"]) for message in response.messages]
-        print(f"[MESSAGES] Messages: {messages}")
+        messages = [(message.id, message.sender,
+                     message.message) for message in response.messages]
+        print(f"[REQUEST MESSAGES] Messages: {messages}")
         return messages
 
     # (7) DELETE MESSAGES
@@ -238,9 +241,9 @@ class ChatClient():
         return return_value
 
     ### MISC HELPER FUNCTIONS ###
-    def hash_password(self, password):
+    def get_hashed_password_for_login(self, password):
         """
-        Hash a password using the bcrypt algorithm.
+        Get the hashed password for login.
 
         :param password: Password
         :return: Hashed password
@@ -251,4 +254,17 @@ class ChatClient():
 
         hashed_password = bcrypt.hashpw(
             password.encode(), self.bcrypt_prefix.encode()).decode()
+        return hashed_password
+
+    def generate_hashed_password_for_create(self, password):
+        """
+        Generate the hashed password for account creation.
+
+        :param password: Password
+        :return: Hashed password
+        """
+        # Generate a salt and hash the password
+        salt = bcrypt.gensalt()
+        hashed_password = bcrypt.hashpw(password.encode(), salt).decode()
+        self.bcrypt_prefix = salt.decode()
         return hashed_password
