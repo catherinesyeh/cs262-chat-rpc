@@ -35,11 +35,20 @@ class ChatClient():
         self.last_offset_account_id = 0  # Offset ID for pagination of accounts
         self.username = None  # Username of the client
         self.bcrypt_prefix = None  # Bcrypt prefix for password hashing
+        self.on_messages_updated = None  # Callback function to update messages
 
         self.bytes_sent = 0  # Number of bytes sent
         self.bytes_received = 0  # Number of bytes received
 
         print("[INITIALIZED] Client initialized")
+
+    def set_message_update_callback(self, callback):
+        """
+        Set a callback function to update messages.
+
+        :param callback: Callback function
+        """
+        self.on_messages_updated = callback
 
     def start_polling_messages(self, poll_interval=5):
         """
@@ -152,7 +161,6 @@ class ChatClient():
         request = chat_pb2.ListAccountsRequest(
             session_key=self.session_key, maximum_number=self.max_users, offset_account_id=self.last_offset_account_id, filter_text=filter_text)
         response = self.stub.ListAccounts(request)
-        print(f"ACCOUNTS: {response.accounts}")
         accounts = [(account.id, account.username)
                     for account in response.accounts]
         print(f"[LIST ACCOUNTS] Accounts: {accounts}")
@@ -191,7 +199,11 @@ class ChatClient():
         response = self.stub.RequestMessages(request)
         messages = [(message.id, message.sender,
                      message.message) for message in response.messages]
-        print(f"[REQUEST MESSAGES] Messages: {messages}")
+        if len(messages) > 0:
+            print(f"[RECEIVED MESSAGES] Messages: {messages}")
+            # send callback
+            if self.on_messages_updated:
+                self.on_messages_updated(messages)
         return messages
 
     # (7) DELETE MESSAGES

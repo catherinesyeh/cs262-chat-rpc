@@ -30,6 +30,9 @@ class ChatUI:
 
         self.prev_search = ""  # Store previous search text for user list
 
+        # Set callback
+        self.client.set_message_update_callback(self.message_callback)
+
         # Start on the login screen
         self.root.title("Login")
         self.create_login_screen()
@@ -311,7 +314,7 @@ class ChatUI:
         self.root.bind("<Configure>", self.on_resize)  # Bind resize event
 
         self.load_user_list()
-        self.root.after(0, self.load_messages)  # Load messages asynchronously
+        self.root.after(0, lambda: self.update_messages([]))  # Load messages
 
     def on_resize(self, event=None):
         """
@@ -443,22 +446,13 @@ class ChatUI:
         self.update_user_list([])
 
     ### MESSAGES WORKFLOW ###
-    def load_messages(self, reset_pages=True):
+    def message_callback(self, messages):
         """
-        Start a thread to fetch and display messages.
+        Callback to update messages when new messages are received.
 
-        :param reset_pages: Whether to reset the current page to 0
+        :param messages: The list of messages to display
         """
-        if reset_pages:
-            self.current_msg_page = 0  # Reset to first page when loading messages
-        threading.Thread(target=self.fetch_messages, daemon=True).start()
-
-    def fetch_messages(self):
-        """
-        Fetch messages.
-        """
-        print("[DEBUG] Fetching messages")
-        messages = self.client.request_messages()
+        print("[DEBUG] Got new messages")
         self.root.after(0, lambda: self.update_messages(messages))
 
     def update_messages(self, messages):
@@ -467,13 +461,21 @@ class ChatUI:
 
         :param messages: The list of messages to display
         """
+        print("[DEBUG] Updating messages")
         # Make sure only messages with new IDs are added
         new_messages = [msg for msg in messages if msg[0]
                         not in self.all_messages]
         self.all_messages += new_messages  # Append to existing messages
 
+        print(f"[DEBUG] All messages: {self.all_messages}")
+
         visible_messages = self.all_messages[self.current_msg_page * self.client.max_msg:(
             self.current_msg_page + 1) * self.client.max_msg]
+
+        print(f"[DEBUG] Visible messages: {visible_messages}")
+
+        if self.chat_display == None:
+            return
 
         # Clear only messages, not buttons or pagination controls
         for widget in self.chat_display.winfo_children():
@@ -547,12 +549,7 @@ class ChatUI:
         self.current_msg_page = new_page
         print(f"Changing message page to {self.current_msg_page}")
 
-        if (direction == 1 and self.unread_count > len(self.all_messages)):
-            print("[DEBUG] Loading more messages")
-            # Fetch more messages if we reach the end and there are unread messages
-            self.load_messages(reset_pages=False)
-        else:  # Otherwise, just update the current list
-            self.update_messages([])
+        self.update_messages([])
 
     ### SEND MESSAGE WORKFLOW ###
     def fill_recipient(self, event):
