@@ -2,14 +2,14 @@ package edu.harvard.Logic;
 
 import org.junit.jupiter.api.Test;
 
+import edu.harvard.Chat.Account;
 import edu.harvard.Chat.AccountLookupResponse;
-import edu.harvard.Data.Data.Account;
-import edu.harvard.Data.Data.ListAccountsRequest;
-import edu.harvard.Data.Data.LoginCreateRequest;
-import edu.harvard.Data.Data.MessageResponse;
-import edu.harvard.Data.Data.SendMessageRequest;
-import edu.harvard.Data.Protocol.HandleException;
-import edu.harvard.Logic.OperationHandler.LoginResponse;
+import edu.harvard.Chat.ListAccountsRequest;
+import edu.harvard.Chat.LoginCreateRequest;
+import edu.harvard.Chat.LoginCreateResponse;
+import edu.harvard.Chat.ChatMessage;
+import edu.harvard.Chat.SendMessageRequest;
+import edu.harvard.Logic.OperationHandler.HandleException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -23,62 +23,49 @@ public class OperationHandlerTest {
       Database db = new Database();
       OperationHandler handler = new OperationHandler(db);
       // Create two accounts
-      LoginCreateRequest u1 = new LoginCreateRequest();
-      u1.username = "june";
-      u1.password_hash = "passwordpasswordpasswordpasswordpasswordpasswordpassword";
-      LoginCreateRequest u2 = new LoginCreateRequest();
-      u2.username = "catherine";
-      u2.password_hash = "password2passwordpasswordpasswordpasswordpasswordpassword";
-      assertEquals(1, handler.createAccount(u1));
-      assertEquals(2, handler.createAccount(u2));
+      LoginCreateRequest u1 = LoginCreateRequest.newBuilder().setUsername("june")
+          .setPasswordHash("passwordpasswordpasswordpasswordpasswordpasswordpassword").build();
+      LoginCreateRequest u2 = LoginCreateRequest.newBuilder().setUsername("catherine")
+          .setPasswordHash("password2passwordpasswordpasswordpasswordpasswordpassword").build();
+      assertEquals(1, handler.lookupSession(handler.createAccount(u1).getSessionKey()));
+      assertEquals(2, handler.lookupSession(handler.createAccount(u2).getSessionKey()));
       // Log into one
       AccountLookupResponse lookup = handler.lookupAccount("june");
       assertEquals(true, lookup.getExists());
       assertEquals(29, lookup.getBcryptPrefix().length());
-      LoginResponse login = handler.login(u1);
-      assertEquals(true, login.success);
-      assertEquals(1, login.account_id);
-      assertEquals(0, login.unread_messages);
+      LoginCreateResponse login = handler.login(u1);
+      assertEquals(true, login.getSuccess());
+      assertEquals(0, login.getUnreadMessages());
+      assertTrue(login.getSessionKey().length() > 0);
+      assertEquals(1, handler.lookupSession(login.getSessionKey()));
       // List accounts
-      ListAccountsRequest listRequest1 = new ListAccountsRequest();
-      listRequest1.maximum_number = 1;
-      listRequest1.offset_account_id = 0;
-      listRequest1.filter_text = "";
-      List<Account> accountList = handler.listAccounts(listRequest1);
-      assertEquals(accountList.get(0).username, u1.username);
+      ListAccountsRequest listRequest1 = ListAccountsRequest.newBuilder().setMaximumNumber(1).setOffsetAccountId(0)
+          .setFilterText("").build();
+      List<Account> accountList = handler.listAccounts(listRequest1).getAccountsList();
+      assertEquals(accountList.get(0).getUsername(), u1.getUsername());
       assertEquals(1, accountList.size());
-      ListAccountsRequest listRequest2 = new ListAccountsRequest();
-      listRequest2.maximum_number = 1;
-      listRequest2.offset_account_id = 1;
-      listRequest2.filter_text = "";
-      List<Account> accountList2 = handler.listAccounts(listRequest2);
-      assertEquals(accountList2.get(0).username, u2.username);
-      ListAccountsRequest listRequest3 = new ListAccountsRequest();
-      listRequest3.maximum_number = 1;
-      listRequest3.offset_account_id = 0;
-      listRequest3.filter_text = "c";
-      List<Account> accountList3 = handler.listAccounts(listRequest3);
-      assertEquals(accountList3.get(0).username, u2.username);
+      ListAccountsRequest listRequest2 = ListAccountsRequest.newBuilder().setMaximumNumber(1).setOffsetAccountId(1)
+          .setFilterText("").build();
+      List<Account> accountList2 = handler.listAccounts(listRequest2).getAccountsList();
+      assertEquals(accountList2.get(0).getUsername(), u2.getUsername());
+      ListAccountsRequest listRequest3 = ListAccountsRequest.newBuilder().setMaximumNumber(1).setOffsetAccountId(1)
+          .setFilterText("c").build();
+      List<Account> accountList3 = handler.listAccounts(listRequest3).getAccountsList();
+      assertEquals(accountList3.get(0).getUsername(), u2.getUsername());
       // Send a message
-      SendMessageRequest msg = new SendMessageRequest();
-      msg.recipient = "catherine";
-      msg.message = "Hi!";
+      SendMessageRequest msg = SendMessageRequest.newBuilder().setRecipient("catherine").setMessage("Hi!").build();
       assertEquals(1, handler.sendMessage(1, msg));
-      SendMessageRequest msg2 = new SendMessageRequest();
-      msg2.recipient = "june";
-      msg2.message = "Hi!";
+      SendMessageRequest msg2 = SendMessageRequest.newBuilder().setRecipient("june").setMessage("Hi!").build();
       assertThrows(HandleException.class, () -> handler.sendMessage(1, msg2));
-      SendMessageRequest msg3 = new SendMessageRequest();
-      msg3.recipient = "unknown";
-      msg3.message = "Hi!";
+      SendMessageRequest msg3 = SendMessageRequest.newBuilder().setRecipient("unknown").setMessage("Hi!").build();
       assertThrows(HandleException.class, () -> handler.sendMessage(1, msg3));
       // Receive a message
-      LoginResponse login2 = handler.login(u2);
-      assertEquals(1, login2.unread_messages);
-      MessageResponse m = handler.requestMessages(2, 5).get(0);
-      assertEquals(1, m.id);
-      assertEquals("june", m.sender);
-      assertEquals(msg.message, m.message);
+      LoginCreateResponse login2 = handler.login(u2);
+      assertEquals(1, login2.getUnreadMessages());
+      ChatMessage m = handler.requestMessages(2, 5).getMessagesList().get(0);
+      assertEquals(1, m.getId());
+      assertEquals("june", m.getSender());
+      assertEquals(msg.getMessage(), m.getMessage());
       // Delete it
       assertEquals(true, handler.deleteMessages(2, Arrays.asList(1)));
       // Send another message
@@ -87,7 +74,7 @@ public class OperationHandlerTest {
       assertEquals(false, handler.deleteMessages(3, Arrays.asList(1)));
       assertEquals(true, handler.deleteMessages(1, Arrays.asList(1)));
       // Verify that this worked
-      assertEquals(0, handler.requestMessages(2, 5).size());
+      assertEquals(0, handler.requestMessages(2, 5).getMessagesList().size());
       // Delete an account
       handler.deleteAccount(1);
     } catch (HandleException e) {

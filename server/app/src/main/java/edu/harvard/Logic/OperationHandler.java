@@ -1,36 +1,41 @@
 package edu.harvard.Logic;
 
-import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
 import at.favre.lib.crypto.bcrypt.BCrypt;
 import edu.harvard.Data.Data.Account;
 import edu.harvard.Data.Data.Message;
+import edu.harvard.Chat;
 import edu.harvard.Chat.AccountLookupResponse;
-import edu.harvard.Data.Data.ListAccountsRequest;
-import edu.harvard.Data.Data.LoginCreateRequest;
-import edu.harvard.Data.Data.MessageResponse;
-import edu.harvard.Data.Data.SendMessageRequest;
-import edu.harvard.Data.Protocol.HandleException;
+import edu.harvard.Chat.LoginCreateRequest;
+import edu.harvard.Chat.LoginCreateResponse;
+import edu.harvard.Chat.RequestMessagesResponse;
+import edu.harvard.Chat.ListAccountsRequest;
+import edu.harvard.Chat.ListAccountsResponse;
+import edu.harvard.Chat.ChatMessage;
+import edu.harvard.Chat.SendMessageRequest;
 
 /*
  * Higher-level logic for all operations.
  */
 public class OperationHandler {
+  // Custom exception, caught in AppThread to generate failure responses
+  public class HandleException extends Exception {
+    public HandleException(String errorMessage) {
+      super(errorMessage);
+    }
+  }
+
   private Database db;
 
   public OperationHandler(Database db) {
     this.db = db;
   }
 
-  // account_id is only needed by the thread to associate a socket with an account
-  public static class LoginResponse {
-    public boolean success;
-    public int account_id;
-    public int unread_messages;
+  public Integer lookupSession(String key) {
+    return db.getSession(key);
   }
 
   public AccountLookupResponse lookupAccount(String username) {
@@ -45,60 +50,68 @@ public class OperationHandler {
     return response.build();
   }
 
-  /*
-   * Returns ID of created account, or 0 for failure.
-   */
-  public int createAccount(LoginCreateRequest request) throws HandleException {
+  public LoginCreateResponse createAccount(LoginCreateRequest request) throws HandleException {
     Account account = new Account();
     try {
-      account.client_bcrypt_prefix = request.password_hash.substring(0, 29);
+      account.client_bcrypt_prefix = request.getPasswordHash().substring(0, 29);
     } catch (Exception e) {
       throw new HandleException("Invalid password hash!");
     }
-    account.username = request.username;
-    account.password_hash = BCrypt.withDefaults().hashToString(12, request.password_hash.toCharArray());
-    return db.createAccount(account);
+    account.username = request.getUsername();
+    account.password_hash = BCrypt.withDefaults().hashToString(12, request.getPasswordHash().toCharArray());
+    int id = db.createAccount(account);
+    if (id != 0) {
+      String key = db.createSession(account.id);
+      return LoginCreateResponse.newBuilder().setSuccess(true).setUnreadMessages(0).setSessionKey(key).build();
+    } else {
+      return LoginCreateResponse.newBuilder().setSuccess(false).build();
+    }
   }
 
-  public LoginResponse login(LoginCreateRequest request) {
-    LoginResponse response = new LoginResponse();
+  public LoginCreateResponse login(LoginCreateRequest request) {
+    LoginCreateResponse.Builder response = LoginCreateResponse.newBuilder();
     // Get account
-    Account account = db.lookupAccountByUsername(request.username);
+    Account account = db.lookupAccountByUsername(request.getUsername());
     if (account == null) {
-      response.success = false;
-      return response;
+      response.setSuccess(false);
+      return response.build();
     }
-    BCrypt.Result result = BCrypt.verifyer().verify(request.password_hash.toCharArray(), account.password_hash);
+    BCrypt.Result result = BCrypt.verifyer().verify(request.getPasswordHash().toCharArray(), account.password_hash);
     if (!result.verified) {
-      response.success = false;
-      return response;
+      response.setSuccess(false);
+      return response.build();
     }
+    String key = db.createSession(account.id);
     int unreadCount = db.getUnreadMessageCount(account.id);
-    response.success = true;
-    response.account_id = account.id;
-    response.unread_messages = unreadCount;
-    return response;
+    response.setSuccess(true);
+    response.setUnreadMessages(unreadCount);
+    response.setSessionKey(key);
+    return response.build();
   }
 
-  public List<Account> listAccounts(ListAccountsRequest request) {
-    ArrayList<Account> list = new ArrayList<>(request.maximum_number);
+  public ListAccountsResponse listAccounts(ListAccountsRequest request) {
+    ArrayList<Account> list = new ArrayList<>(request.getMaximumNumber());
     Collection<Account> allAccounts = db.getAllAccounts();
     for (Account account : allAccounts) {
       boolean include = true;
-      if (account.id <= request.offset_account_id) {
+      if (account.id <= request.getOffsetAccountId()) {
         include = false;
       }
-      if (!account.username.contains(request.filter_text)) {
+      if (!account.username.contains(request.getFilterText())) {
         include = false;
       }
       if (include) {
         list.add(account);
       }
-      if (list.size() >= request.maximum_number) {
+      if (list.size() >= request.getMaximumNumber()) {
         break;
       }
     }
-    return list;
+    List<Chat.Account> responseList = new ArrayList<>(list.size());
+    for (Account a : list) {
+      responseList.add(Chat.Account.newBuilder().setId(a.id).setUsername(a.username).build());
+    }
+    return ListAccountsResponse.newBuilder().addAllAccounts(responseList).build();
   }
 
   public int sendMessage(int sender_id, SendMessageRequest request) throws HandleException {
@@ -108,7 +121,7 @@ public class OperationHandler {
       throw new HandleException("Sender does not exist!");
     }
     // Look up recipient
-    Account account = db.lookupAccountByUsername(request.recipient);
+    Account account = db.lookupAccountByUsername(request.getRecipient());
     if (account == null) {
       throw new HandleException("Recipient does not exist!");
     }
@@ -117,48 +130,25 @@ public class OperationHandler {
     }
     // Build Message
     Message m = new Message();
-    m.message = request.message;
+    m.message = request.getMessage();
     m.recipient_id = account.id;
     m.sender_id = sender_id;
-    int id;
-    // Auto-send message if possible
-    Database.SocketWithProtocol s = db.getSocket(account.id);
-    if (s == null || s.socket.isClosed()) {
-      m.read = false;
-      // Add message to database
-      id = db.createMessage(m);
-    } else {
-      m.read = true;
-      // Add message to database
-      id = db.createMessage(m);
-      try {
-        MessageResponse sendableMessage = new MessageResponse();
-        sendableMessage.id = id;
-        sendableMessage.sender = sender.username;
-        sendableMessage.message = request.message;
-        synchronized (s.socket) {
-          s.socket.getOutputStream()
-              .write(s.protocol.generateRequestMessagesResponse(Arrays.asList(sendableMessage)));
-        }
-      } catch (IOException e) {
-        System.out.println(e.getMessage());
-        m.read = false;
-      }
-    }
+    m.read = false;
+    int id = db.createMessage(m);
     return id;
   }
 
-  public List<MessageResponse> requestMessages(int user_id, int maximum_number) {
+  public RequestMessagesResponse requestMessages(int user_id, int maximum_number) {
     List<Message> unreadMessages = db.getUnreadMessages(user_id, maximum_number);
-    ArrayList<MessageResponse> responseMessages = new ArrayList<>(unreadMessages.size());
+    ArrayList<ChatMessage> responseMessages = new ArrayList<>(unreadMessages.size());
     for (Message message : unreadMessages) {
-      MessageResponse messageResponse = new MessageResponse();
-      messageResponse.id = message.id;
-      messageResponse.message = message.message;
-      messageResponse.sender = db.lookupAccount(message.sender_id).username;
-      responseMessages.add(messageResponse);
+      ChatMessage.Builder messageResponse = ChatMessage.newBuilder();
+      messageResponse.setId(message.id);
+      messageResponse.setMessage(message.message);
+      messageResponse.setSender(db.lookupAccount(message.sender_id).username);
+      responseMessages.add(messageResponse.build());
     }
-    return responseMessages;
+    return RequestMessagesResponse.newBuilder().addAllMessages(responseMessages).build();
   }
 
   // returns success boolean

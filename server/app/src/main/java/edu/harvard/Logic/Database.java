@@ -1,6 +1,5 @@
 package edu.harvard.Logic;
 
-import java.net.Socket;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -8,8 +7,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
-import edu.harvard.Data.Protocol;
 import edu.harvard.Data.Data.Account;
 import edu.harvard.Data.Data.Message;
 
@@ -26,20 +25,15 @@ public class Database {
   // Optimization for getting unread messages
   private Map<Integer, ArrayList<Integer>> unreadMessagesPerAccount;
 
-  // Sockets for currently logged in users.
-  public static class SocketWithProtocol {
-    public Socket socket;
-    public Protocol protocol;
-  }
-
-  private Map<Integer, SocketWithProtocol> registeredSockets;
+  // Session keys for currently logged in users.
+  private Map<String, Integer> sessions;
 
   public Database() {
     accountMap = new HashMap<>();
     accountUsernameMap = new HashMap<>();
     messageMap = new HashMap<>();
     unreadMessagesPerAccount = new HashMap<>();
-    registeredSockets = new HashMap<>();
+    sessions = new HashMap<>();
   }
 
   public synchronized Account lookupAccount(int id) {
@@ -50,12 +44,14 @@ public class Database {
     return accountMap.get(accountUsernameMap.get(username));
   }
 
-  public synchronized void registerSocket(int id, SocketWithProtocol socket) {
-    registeredSockets.put(id, socket);
+  public synchronized String createSession(int id) {
+    String key = UUID.randomUUID().toString();
+    sessions.put(key, id);
+    return key;
   }
 
-  public synchronized SocketWithProtocol getSocket(int id) {
-    return registeredSockets.get(id);
+  public synchronized Integer getSession(String key) {
+    return sessions.get(key);
   }
 
   /*

@@ -9,13 +9,26 @@ import java.util.Properties;
 
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
+import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 
 import edu.harvard.Logic.Database;
 import edu.harvard.Logic.OperationHandler;
+import edu.harvard.Logic.OperationHandler.HandleException;
 
 import edu.harvard.Chat.AccountLookupRequest;
 import edu.harvard.Chat.AccountLookupResponse;
+import edu.harvard.Chat.DeleteAccountRequest;
+import edu.harvard.Chat.DeleteMessagesRequest;
+import edu.harvard.Chat.ListAccountsRequest;
+import edu.harvard.Chat.ListAccountsResponse;
+import edu.harvard.Chat.LoginCreateRequest;
+import edu.harvard.Chat.LoginCreateResponse;
+import edu.harvard.Chat.RequestMessagesRequest;
+import edu.harvard.Chat.RequestMessagesResponse;
+import edu.harvard.Chat.SendMessageRequest;
+import edu.harvard.Chat.SendMessageResponse;
+import edu.harvard.Chat.Empty;
 
 public class App {
 	public static void main(String[] args) {
@@ -23,22 +36,26 @@ public class App {
 		try (FileInputStream input = new FileInputStream("../config.properties")) {
 			prop.load(input);
 			String port = prop.getProperty("port");
-			Database db = new Database();
-			Server server = ServerBuilder.forPort(Integer.parseInt(port))
-					.addService(new ChatService(db)).build();
-			server.start();
-			try {
-				System.out.println("Running!");
-				server.awaitTermination();
-			} catch (InterruptedException ex) {
-				System.exit(0);
-			}
+			startServer(Integer.parseInt(port));
 		} catch (IOException ex) {
 			System.err.println("Unhandled I/O failure!");
 			System.err.println(ex.getMessage());
 			for (StackTraceElement ste : ex.getStackTrace()) {
 				System.err.println(ste + "\n");
 			}
+		}
+	}
+
+	static void startServer(int port) throws IOException {
+		Database db = new Database();
+		Server server = ServerBuilder.forPort(port)
+				.addService(new ChatService(db)).build();
+		server.start();
+		try {
+			System.out.println("Running!");
+			server.awaitTermination();
+		} catch (InterruptedException ex) {
+			System.exit(0);
 		}
 	}
 
@@ -54,6 +71,95 @@ public class App {
 			AccountLookupResponse lookupResponse = handler.lookupAccount(request.getUsername());
 			response.onNext(lookupResponse);
 			response.onCompleted();
+		}
+
+		@Override
+		public void login(LoginCreateRequest request, StreamObserver<LoginCreateResponse> response) {
+			LoginCreateResponse loginResponse = handler.login(request);
+			response.onNext(loginResponse);
+			response.onCompleted();
+		}
+
+		@Override
+		public void createAccount(LoginCreateRequest request, StreamObserver<LoginCreateResponse> response) {
+			try {
+				LoginCreateResponse createResponse = handler.createAccount(request);
+				response.onNext(createResponse);
+				response.onCompleted();
+			} catch (HandleException e) {
+				Status status = Status.INVALID_ARGUMENT.withDescription(e.getMessage());
+				response.onError(status.asRuntimeException());
+			}
+		}
+
+		@Override
+		public void listAccounts(ListAccountsRequest request, StreamObserver<ListAccountsResponse> response) {
+			Integer id = handler.lookupSession(request.getSessionKey());
+			if (id == null) {
+				Status status = Status.UNAUTHENTICATED.withDescription("Invalid session key");
+				response.onError(status.asRuntimeException());
+			} else {
+				ListAccountsResponse listResponse = handler.listAccounts(request);
+				response.onNext(listResponse);
+				response.onCompleted();
+			}
+		}
+
+		@Override
+		public void sendMessage(SendMessageRequest request, StreamObserver<SendMessageResponse> response) {
+			Integer user_id = handler.lookupSession(request.getSessionKey());
+			if (user_id == null) {
+				Status status = Status.UNAUTHENTICATED.withDescription("Invalid session key");
+				response.onError(status.asRuntimeException());
+			} else {
+				try {
+					int message_id = handler.sendMessage(user_id, request);
+					response.onNext(SendMessageResponse.newBuilder().setId(message_id).build());
+					response.onCompleted();
+				} catch (HandleException e) {
+					Status status = Status.INVALID_ARGUMENT.withDescription(e.getMessage());
+					response.onError(status.asRuntimeException());
+				}
+			}
+		}
+
+		@Override
+		public void requestMessages(RequestMessagesRequest request, StreamObserver<RequestMessagesResponse> response) {
+			Integer id = handler.lookupSession(request.getSessionKey());
+			if (id == null) {
+				Status status = Status.UNAUTHENTICATED.withDescription("Invalid session key");
+				response.onError(status.asRuntimeException());
+			} else {
+				RequestMessagesResponse messagesResponse = handler.requestMessages(id, request.getMaximumNumber());
+				response.onNext(messagesResponse);
+				response.onCompleted();
+			}
+		}
+
+		@Override
+		public void deleteMessages(DeleteMessagesRequest request, StreamObserver<Empty> response) {
+			Integer id = handler.lookupSession(request.getSessionKey());
+			if (id == null) {
+				Status status = Status.UNAUTHENTICATED.withDescription("Invalid session key");
+				response.onError(status.asRuntimeException());
+			} else {
+				handler.deleteMessages(id, request.getIdList());
+				response.onNext(Empty.newBuilder().build());
+				response.onCompleted();
+			}
+		}
+
+		@Override
+		public void deleteAccount(DeleteAccountRequest request, StreamObserver<Empty> response) {
+			Integer id = handler.lookupSession(request.getSessionKey());
+			if (id == null) {
+				Status status = Status.UNAUTHENTICATED.withDescription("Invalid session key");
+				response.onError(status.asRuntimeException());
+			} else {
+				handler.deleteAccount(id);
+				response.onNext(Empty.newBuilder().build());
+				response.onCompleted();
+			}
 		}
 	}
 }

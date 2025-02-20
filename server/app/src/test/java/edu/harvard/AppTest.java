@@ -4,12 +4,66 @@
 package edu.harvard;
 
 import org.junit.jupiter.api.Test;
+
+import edu.harvard.Chat.ListAccountsRequest;
+import edu.harvard.Chat.ListAccountsResponse;
+import edu.harvard.Chat.LoginCreateRequest;
+import edu.harvard.Chat.LoginCreateResponse;
+import edu.harvard.ChatServiceGrpc.ChatServiceBlockingStub;
+import io.grpc.ManagedChannel;
+import io.grpc.ManagedChannelBuilder;
+
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.io.IOException;
+
 class AppTest {
+    static final int PORT = 58585;
+
     @Test
     void appExists() {
         App classUnderTest = new App();
         assertNotNull(classUnderTest);
+    }
+
+    /*
+     * Small semi-integration test of the RPC server that checks the session system
+     * and two RPCs.
+     * The client integration tests serve as a more comprehensive end-to-end test!
+     */
+    @Test
+    void grpcServerWorks() {
+        Thread t = new Thread(new Runnable() {
+            public void run() {
+                try {
+                    App.startServer(PORT);
+                } catch (IOException ex) {
+                    System.err.println("Unhandled I/O failure!");
+                    System.err.println(ex.getMessage());
+                    for (StackTraceElement ste : ex.getStackTrace()) {
+                        System.err.println(ste + "\n");
+                    }
+                }
+            }
+        });
+
+        t.start();
+
+        ManagedChannel channel = ManagedChannelBuilder.forAddress("localhost", PORT).usePlaintext().build();
+        ChatServiceBlockingStub stub = ChatServiceGrpc.newBlockingStub(channel);
+
+        // create an account
+        LoginCreateResponse createResponse = stub.createAccount(
+                LoginCreateRequest.newBuilder().setUsername("june").setPasswordHash("1".repeat(29)).build());
+        assertTrue(createResponse.getSuccess());
+        assertNotNull(createResponse.getSessionKey());
+
+        // list accounts
+        ListAccountsResponse list = stub.listAccounts(ListAccountsRequest.newBuilder()
+                .setSessionKey(createResponse.getSessionKey()).setMaximumNumber(1).build());
+        assertEquals("june", list.getAccounts(0).getUsername());
+        assertEquals(1, list.getAccounts(0).getId());
+
+        t.interrupt();
     }
 }
