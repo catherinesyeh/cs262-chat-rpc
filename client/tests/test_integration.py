@@ -75,7 +75,7 @@ def test_lookup_nonexistent_user():
         assert sender_client.bcrypt_prefix is None, "Lookup should fail for nonexistent user"
         bytes_sent = sender_client.bytes_sent
         bytes_received = sender_client.bytes_received
-        protocol_type = "grcp"
+        protocol_type = "grpc"
 
     time_elapsed = time.time() - start_time
     write_to_log("test_lookup_nonexistent_user", protocol_type,
@@ -101,7 +101,7 @@ def test_create_account():
         assert sender_client.bcrypt_prefix is not None, "Lookup should succeed for created user"
         bytes_sent = sender_client.bytes_sent
         bytes_received = sender_client.bytes_received
-        protocol_type = "grcp"
+        protocol_type = "grpc"
 
     time_elapsed = time.time() - start_time
     write_to_log("test_create_account", protocol_type,
@@ -129,7 +129,7 @@ def test_login():
         assert sender_client.username == username, "Login failed: Username not set correctly"
         bytes_sent = sender_client.bytes_sent
         bytes_received = sender_client.bytes_received
-        protocol_type = "grcp"
+        protocol_type = "grpc"
 
     time_elapsed = time.time() - start_time
     write_to_log("test_login", protocol_type,
@@ -188,7 +188,7 @@ def test_list_accounts():
 
         bytes_sent = sender.bytes_sent
         bytes_received = sender.bytes_received
-        protocol_type = "grcp"
+        protocol_type = "grpc"
 
     time_elapsed = time.time() - start_time
     write_to_log("test_list_accounts", protocol_type,
@@ -274,7 +274,7 @@ def test_send_receive_message(test_context):
             check_last_message), "Last message not received in time"
         bytes_sent = sender.bytes_sent + receiver.bytes_sent
         bytes_received = sender.bytes_received + receiver.bytes_received
-        protocol_type = "grcp"
+        protocol_type = "grpc"
 
     time_elapsed = time.time() - start_time
     write_to_log("test_send_receive_message", protocol_type,
@@ -318,7 +318,7 @@ def test_delete_message(test_context):
 
         bytes_sent = sender.bytes_sent + receiver.bytes_sent
         bytes_received = sender.bytes_received + receiver.bytes_received
-        protocol_type = "grcp"
+        protocol_type = "grpc"
 
     time_elapsed = time.time() - start_time
     write_to_log("test_delete_message", protocol_type,
@@ -341,7 +341,7 @@ def test_delete_account():
 
         bytes_sent = sender.bytes_sent
         bytes_received = sender.bytes_received
-        protocol_type = "grcp"
+        protocol_type = "grpc"
 
     time_elapsed = time.time() - start_time
     write_to_log("test_delete_account", protocol_type,

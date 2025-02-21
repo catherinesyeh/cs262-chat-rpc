@@ -19,7 +19,7 @@ class BytesTrackingInterceptor(grpc.UnaryUnaryClientInterceptor):
         :param request: The request message.
         :return: The response object (future or not).
         """
-        request_size = len(request.SerializeToString())
+        request_size = request.ByteSize()
         self.client.bytes_sent += request_size
 
         # Get the response (this may be a future)
@@ -30,8 +30,8 @@ class BytesTrackingInterceptor(grpc.UnaryUnaryClientInterceptor):
             response_future, "result") else response_future
 
         # Measure response size if it's available
-        if response and hasattr(response, "SerializeToString"):
-            response_size = len(response.SerializeToString())
+        if response and hasattr(response, "ByteSize"):
+            response_size = response.ByteSize()
             self.client.bytes_received += response_size
 
         # Return the original response object (future or not)
