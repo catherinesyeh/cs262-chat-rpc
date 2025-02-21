@@ -3,14 +3,14 @@ import json
 CONFIG_FILE = '../config.json'
 
 
-def get_config():
+def get_config(config_file=CONFIG_FILE):
     """
     Load the configuration from the config file.
 
     Returns:
         dict: The configuration values (host, port, max_msg)
     """
-    with open(CONFIG_FILE, "r") as f:
+    with open(config_file, "r") as f:
         config = json.load(f)
 
     host = config["SERVER_HOST"]

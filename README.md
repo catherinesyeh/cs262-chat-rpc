@@ -46,10 +46,10 @@ poetry run python client.py
 
 ### Client Testing
 
-1. Navigate into [tests](tests) folder:
+1. Navigate into [client/tests/](client/tests/) folder:
 
 ```
-cd tests
+cd client/tests
 ```
 
 2. Start tests:
@@ -58,9 +58,9 @@ cd tests
 poetry run pytest
 ```
 
-- Integration tests: [tests/test_integration.py](tests/test_integration.py)
+- Integration tests: [client/tests/test_integration.py](client/tests/test_integration.py)
   - Note: These tests do require the server and expect a clean database, so we suggest restarting the server before running them.
-  - The integration tests will also log metrics to the [tests/logs/](tests/logs/) directory.
+  - The integration tests will also log metrics to the [client/tests/logs/](client/tests/logs/) directory.
 
 ## Documentation
 

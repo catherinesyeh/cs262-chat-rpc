@@ -1,4 +1,5 @@
 import time
+from BytesTrackingInterceptor import BytesTrackingInterceptor
 import grpc
 import threading
 import bcrypt
@@ -23,8 +24,15 @@ class ChatClient():
         :param max_users: Maximum number of users to display
         """
         channel_str = f"{host}:{port}"
-        self.channel = grpc.insecure_channel(channel_str)
-        self.stub = chat_pb2_grpc.ChatServiceStub(self.channel)
+        base_channel = grpc.insecure_channel(
+            channel_str)  # Create a base channel
+        # Interceptor to track bytes sent/received
+        self.interceptor = BytesTrackingInterceptor(self)
+        # Create a channel with the interceptor
+        self.channel = grpc.intercept_channel(base_channel, self.interceptor)
+        self.stub = chat_pb2_grpc.ChatServiceStub(
+            self.channel)  # Create a stub with the channel and interceptor
+
         self.session_key = None  # Session key for authenticated requests
         self.running = False  # Flag to control polling thread
         self.thread = None  # Thread to poll for messages

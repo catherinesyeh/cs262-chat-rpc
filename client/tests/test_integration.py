@@ -1,4 +1,3 @@
-import socket
 import time
 import sys
 import os
@@ -6,14 +5,16 @@ import pytest
 from contextlib import contextmanager
 from helpers.ContextHelper import ContextHelper
 from helpers.utils import wait_for_condition, write_to_log
+# Get absolute paths
+current_dir = os.path.dirname(os.path.abspath(__file__))
+client_root = os.path.abspath(os.path.join(current_dir, '..'))
 
-# Add project root to sys.path
-sys.path.insert(0, os.path.abspath(
-    os.path.join(os.path.dirname(__file__), '..')))
+# Add client directory to path
+sys.path.insert(0, client_root)
 
-from client import config
-from client.network.network_json import JSONChatClient
-from client.network.network_wire import WireChatClient
+# Create symlinks or copy proto files if needed
+from network import ChatClient
+import config
 
 # -----------------------------------------------------------------------------
 # Helper Functions
@@ -33,23 +34,19 @@ def client_connection():
     """
     Set up a ChatClient instance and connect to the server.
     """
-    client_config = config.get_config()
+    client_config = config.get_config("../../config.json")
     host = client_config["host"]
     port = client_config["port"]
     max_msg = client_config["max_msg"]
     max_users = client_config["max_users"]
-    use_json_protocol = client_config["use_json_protocol"]
 
     # Create a client based on the protocol
-    if use_json_protocol:
-        client = JSONChatClient(host, port, max_msg, max_users)
-    else:
-        client = WireChatClient(host, port, max_msg, max_users)
+    client = ChatClient(host, port, max_msg, max_users)
 
     try:
         yield client
     finally:
-        client.close()
+        client.stop_polling_messages()
         time.sleep(1)  # Wait for server to close connection
 
 
@@ -61,6 +58,7 @@ def test_server_connection():
     Test if the client can connect to the server.
     """
     with client_connection() as client:
+        client.start_polling_messages()
         assert client.running == True, "Client failed to connect to server"
 
 
@@ -72,14 +70,12 @@ def test_lookup_nonexistent_user():
     username = "new_user"
 
     with client_connection() as sender_client:
-        sender_client.send_lookup_account(username)
-        time.sleep(1)
-
+        exists = sender_client.account_lookup(username)
+        assert not exists, "Lookup should fail for nonexistent user"
         assert sender_client.bcrypt_prefix is None, "Lookup should fail for nonexistent user"
         bytes_sent = sender_client.bytes_sent
         bytes_received = sender_client.bytes_received
-        protocol_type = "json" if isinstance(
-            sender_client, JSONChatClient) else "wire"
+        protocol_type = "grcp"
 
     time_elapsed = time.time() - start_time
     write_to_log("test_lookup_nonexistent_user", protocol_type,
@@ -96,18 +92,16 @@ def test_create_account():
 
     with client_connection() as sender_client:
         # Create account
-        sender_client.send_create_account(username, password)
-        time.sleep(1)
+        sender_client.create_account(username, password)
 
         # Now lookup should succeed
-        sender_client.send_lookup_account(username)
-        time.sleep(1)
+        exists = sender_client.account_lookup(username)
 
+        assert exists, "Lookup should succeed for created user"
         assert sender_client.bcrypt_prefix is not None, "Lookup should succeed for created user"
         bytes_sent = sender_client.bytes_sent
         bytes_received = sender_client.bytes_received
-        protocol_type = "json" if isinstance(
-            sender_client, JSONChatClient) else "wire"
+        protocol_type = "grcp"
 
     time_elapsed = time.time() - start_time
     write_to_log("test_create_account", protocol_type,
@@ -124,39 +118,31 @@ def test_login():
 
     with client_connection() as sender_client:
         # See if account exists
-        sender_client.send_lookup_account(username)
-        time.sleep(1)
+        sender_client.account_lookup(username)
 
         # Create account if it doesn't exist
         if sender_client.bcrypt_prefix is None:
-            sender_client.send_create_account(username, password)
-            time.sleep(1)
+            sender_client.create_account(username, password)
         else:  # Login
-            sender_client.send_login(username, password)
-            time.sleep(1)
+            sender_client.login(username, password)
 
         assert sender_client.username == username, "Login failed: Username not set correctly"
         bytes_sent = sender_client.bytes_sent
         bytes_received = sender_client.bytes_received
-        protocol_type = "json" if isinstance(
-            sender_client, JSONChatClient) else "wire"
+        protocol_type = "grcp"
 
     time_elapsed = time.time() - start_time
     write_to_log("test_login", protocol_type,
                  bytes_received, bytes_sent, time_elapsed)
 
 
-def test_list_accounts(test_context):
+def test_list_accounts():
     """
     Test if the client can request a list of accounts from the server.
-
-    :param test_context: TestContext instance
     """
     start_time = time.time()
     with client_connection() as sender:
         # Attach the callback to capture received messages
-        sender.start_polling_messages(test_context.message_callback)
-
         sender.max_users = 2
 
         # Create some accounts first to ensure the list is not empty
@@ -164,26 +150,24 @@ def test_list_accounts(test_context):
         password = "test_password"
 
         for username in usernames:
-            sender.send_create_account(username, password)
-            time.sleep(1)
+            sender.create_account(username, password)
 
         # Request the list of accounts
-        sender.send_list_accounts()
-        time.sleep(1)
+        accounts = sender.list_accounts()
 
         # Check if the returned accounts contain the created users
-        listed_usernames = [account[1] for account in test_context.accounts]
+        listed_usernames = [account[1] for account in accounts]
 
         assert len(
             listed_usernames) == sender.max_users, "List of accounts should be equal to max_users"
 
         # Send another request
         sender.last_offset_account_id = sender.max_users
-        sender.send_list_accounts()
+        accounts = sender.list_accounts()
         time.sleep(1)
 
         # Check if returned account ids are correct
-        ids = [account[0] for account in test_context.accounts]
+        ids = [account[0] for account in accounts]
         assert len(
             listed_usernames) == sender.max_users, "List of accounts should be equal to max_users"
 
@@ -193,19 +177,18 @@ def test_list_accounts(test_context):
         # Now try filtering
         filter_text = "user1"
         sender.last_offset_account_id = 0
-        sender.send_list_accounts(filter_text)
+        accounts = sender.list_accounts(filter_text)
         time.sleep(1)
 
         # Check if the returned accounts contain the created users
-        listed_usernames = [account[1] for account in test_context.accounts]
+        listed_usernames = [account[1] for account in accounts]
         assert len(listed_usernames) == 1, "List of accounts should be equal to 1"
 
         assert usernames[0] in listed_usernames, f"New username {usernames[0]} not found in account list"
 
         bytes_sent = sender.bytes_sent
         bytes_received = sender.bytes_received
-        protocol_type = "json" if isinstance(
-            sender, JSONChatClient) else "wire"
+        protocol_type = "grcp"
 
     time_elapsed = time.time() - start_time
     write_to_log("test_list_accounts", protocol_type,
@@ -221,16 +204,14 @@ def test_send_receive_message(test_context):
     start_time = time.time()
     with client_connection() as sender, client_connection() as receiver:
         # Set up the receiver
-        receiver.start_polling_messages(test_context.message_callback)
-        sender.start_polling_messages(test_context.message_callback)
+        receiver.set_message_update_callback(test_context.message_callback)
+        receiver.start_polling_messages()
 
         # Create sender account
-        sender.send_create_account("test_sender", "test_password")
-        time.sleep(1)
+        sender.create_account("test_sender", "test_password")
 
         # Create receiver account
-        receiver.send_create_account("test_receiver", "test_password")
-        time.sleep(1)
+        receiver.create_account("test_receiver", "test_password")
 
         # Send message from sender to receiver while receiver is logged in
         sender.send_message("test_receiver", "Hello, world!")
@@ -256,7 +237,7 @@ def test_send_receive_message(test_context):
             check_long_message), "(2) Sync long message not received in time"
 
         # Log out receiver
-        receiver.close()
+        receiver.stop_polling_messages()
         time.sleep(1)
 
         # Send multiple messages from sender to receiver while receiver is logged out
@@ -264,23 +245,17 @@ def test_send_receive_message(test_context):
         receiver.max_msg = num_messages - 1
 
         for i in range(num_messages):
-            sender.send_message("test_receiver", f"Message {i}")
-            time.sleep(1)
-            assert test_context.msg_sent == True, "Message not sent"
-            time.sleep(1)
-            test_context.msg_sent = False
+            sent = sender.send_message("test_receiver", f"Message {i}")
+            assert sent, f"Message {i} not sent"
 
         # Restart the receiver
-        receiver.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        receiver.connect()
-        receiver.start_polling_messages(test_context.message_callback)
+        receiver.start_polling_messages()
 
         # Log in receiver
-        receiver.send_login("test_receiver", "test_password")
-        time.sleep(1)
+        receiver.login("test_receiver", "test_password")
 
         # Request messages for receiver
-        receiver.send_request_messages()
+        # receiver.request_messages()
 
         # Check if messages were received
         def check_messages():
@@ -290,7 +265,7 @@ def test_send_receive_message(test_context):
             check_messages), "(3) Async messages not received in time"
 
         # Get the last message
-        receiver.send_request_messages()
+        # receiver.request_messages()
 
         def check_last_message():
             return len(test_context.messages) == 1 and test_context.messages[0][2] == f"Message {num_messages - 1}"
@@ -299,8 +274,7 @@ def test_send_receive_message(test_context):
             check_last_message), "Last message not received in time"
         bytes_sent = sender.bytes_sent + receiver.bytes_sent
         bytes_received = sender.bytes_received + receiver.bytes_received
-        protocol_type = "json" if isinstance(
-            sender, JSONChatClient) else "wire"
+        protocol_type = "grcp"
 
     time_elapsed = time.time() - start_time
     write_to_log("test_send_receive_message", protocol_type,
@@ -316,15 +290,14 @@ def test_delete_message(test_context):
     start_time = time.time()
     with client_connection() as sender, client_connection() as receiver:
         # Set up the receiver
-        receiver.start_polling_messages(test_context.message_callback)
+        receiver.set_message_update_callback(test_context.message_callback)
+        receiver.start_polling_messages()
 
         # Create sender account
-        sender.send_create_account("test_sender1", "test_password")
-        time.sleep(1)
+        sender.create_account("test_sender1", "test_password")
 
         # Create receiver account
-        receiver.send_create_account("test_receiver1", "test_password")
-        time.sleep(1)
+        receiver.create_account("test_receiver1", "test_password")
 
         # Send message from sender to receiver
         sender.send_message("test_receiver1", "Hello, world!")
@@ -339,22 +312,13 @@ def test_delete_message(test_context):
             check_message), "Message not received in time"
 
         # Delete the message
-        receiver.send_delete_message([test_context.messages[0][0]])
-        time.sleep(1)
+        success = receiver.delete_message([test_context.messages[0][0]])
 
-        # Request messages for receiver
-        receiver.send_request_messages()
+        assert success, "Message deletion failed"
 
-        # Check if message was deleted
-        def check_deleted_message():
-            return test_context.msg_deleted
-
-        assert wait_for_condition(
-            check_deleted_message), "Message not deleted in time"
         bytes_sent = sender.bytes_sent + receiver.bytes_sent
         bytes_received = sender.bytes_received + receiver.bytes_received
-        protocol_type = "json" if isinstance(
-            sender, JSONChatClient) else "wire"
+        protocol_type = "grcp"
 
     time_elapsed = time.time() - start_time
     write_to_log("test_delete_message", protocol_type,
@@ -368,23 +332,16 @@ def test_delete_account():
     start_time = time.time()
     with client_connection() as sender:
         # Create account
-        sender.send_create_account("test_user_to_delete", "test_password")
-        time.sleep(1)
+        sender.create_account("test_user_to_delete", "test_password")
 
         # Delete account
-        sender.send_delete_account()
-        time.sleep(1)
+        deleted = sender.delete_account()
 
-        def check_deleted_account():
-            return sender.thread is None
+        assert deleted, "Account deletion failed"
 
-        # Check if account was deleted
-        assert wait_for_condition(
-            check_deleted_account), "Account not deleted in time"
         bytes_sent = sender.bytes_sent
         bytes_received = sender.bytes_received
-        protocol_type = "json" if isinstance(
-            sender, JSONChatClient) else "wire"
+        protocol_type = "grcp"
 
     time_elapsed = time.time() - start_time
     write_to_log("test_delete_account", protocol_type,
